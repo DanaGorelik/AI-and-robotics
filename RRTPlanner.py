@@ -1,6 +1,7 @@
 import numpy as np
 from RRTTree import RRTTree
 import time
+import random
 
 class RRTPlanner(object):
 
@@ -32,24 +33,29 @@ class RRTPlanner(object):
         while self.planning_env.compute_distance(goal, q_new) != 0:
             q_rand = self.sample_random_state()
             if not self.planning_env.state_validity_checker(q_rand):
-                raise ValueError('Rand state must be within the map limits')
+                continue
             # q_near = self.tree.get_nearest_vertex(q_rand)
-            q_near = self.tree.get_nearest_state(q_rand)
+            q_near_vid, q_near = self.tree.get_nearest_state(q_rand)
+            q_near = np.array(q_near).flatten()  # Ensure it is a flattened numpy array
+
             if not self.planning_env.state_validity_checker(q_near):
-                raise ValueError('Near state must be within the map limits')
+                continue
             q_new = self.extend(q_near, q_rand)
             if q_new is not None:
-                self.tree.add_vertex(q_new)
-                self.tree.add_edge(q_near, q_new)
+                edge_cost = self.planning_env.compute_distance(q_near, q_new)
+                q_new_vid = self.tree.add_vertex(q_new)  # Add q_new as a vertex and get the vertex ID
+                self.tree.add_edge(q_near_vid, q_new_vid, edge_cost)
+                print("added vertex {} and edge from {} to {}".format(q_new, q_near, q_new))
                 
-        plan = self.plan_from_path(self.tree.get_idx_for_state(goal))           
+        plan = self.plan_from_path(goal)          
         
         # print total path cost and time
         print('Total cost of path: {:.2f}'.format(self.compute_cost(plan)))
         print('Total time: {:.2f}'.format(time.time()-start_time))
 
         return np.array(plan)
-
+    
+    
     def compute_cost(self, plan: np.array) -> float:
         '''
         Compute and return the plan cost, which is the sum of the distances between steps.
@@ -86,7 +92,7 @@ class RRTPlanner(object):
         
         return new_state
     
-    def plan_from_path(self, goal_idx):
+    def plan_from_path(self, goal):
         '''
         Reconstruct the path from the goal to the start using parent links in the tree.
         Args:
@@ -95,13 +101,19 @@ class RRTPlanner(object):
             List of states (path) from start to goal.
         '''
         path = []
-        current_idx = goal_idx
-
-        while current_idx is not None:
+        current_state = goal
+        current_idx = self.tree.get_idx_for_state(current_state)
+        while current_idx > 0:
             # Add the current state's coordinates to the path
-            path.append(self.tree.get_vertex(current_idx))
+            path.append(current_state)
+
             # Move to the parent of the current node
-            current_idx = self.tree.get_parent(current_idx)
+
+            current_state = self.tree.vertices[self.tree.edges[current_idx]].state
+            current_idx = self.tree.get_idx_for_state(current_state)
+
+            # Move to the parent of the current node
+            #current_state = self.tree.edges[self.tree.get_idx_for_state(current_state)]
         
         # Reverse the path to start from the initial position
         return path[::-1]
@@ -110,7 +122,7 @@ class RRTPlanner(object):
             '''
             Sample a random state within the environment's bounds.
             '''
-            x = np.random.uniform(self.planning_env.xlimit[0], self.planning_env.xlimit[1])
-            y = np.random.uniform(self.planning_env.ylimit[0], self.planning_env.ylimit[1])
+            x = random.randint(self.planning_env.xlimit[0] // 10, self.planning_env.xlimit[1] // 10) * 10
+            y = random.randint(self.planning_env.ylimit[0] // 10, self.planning_env.ylimit[1] // 10) * 10
             return np.array([x, y])
     
